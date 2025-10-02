@@ -13,3 +13,5 @@ python annotate_bboxes_from_url.py --file "C:/path/to/img.jpg" \
   --bbox-format yolo_norm
 
   python annotate_bboxes_from_url.py --file "C:/Users/rico/Pictures/DJI_0942.jpg" --bbox-format yolo_norm
+
+  python annotate_bboxes_from_url.py --file "C:/Users/rico/Pictures/DJI_0942.jpg" --bbox-format qwen1000
