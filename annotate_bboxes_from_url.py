@@ -53,9 +53,38 @@ DEFAULT_IMAGE_URL = (
 # Minimal demo structure if --data/--labels-qwen not provided
 DEFAULT_DATA = {
     "boxes": [
-        {"bbox_2d": [352, 449, 392, 471], "description": "horizontal crack in brick wall near roofline"},
-        {"bbox_2d": [357, 552, 419, 579], "description": "horizontal crack in brick wall, slightly wider and more pronounced"},
-    
+        {
+      "bbox_2d": [356, 555, 432, 581],
+      "description": "horizontal hairline crack in mortar joint near center of gable"
+    },
+    {
+      "bbox_2d": [275, 466, 308, 480],
+      "description": "faint horizontal mortar erosion near upper left gable"
+    },
+    {
+      "bbox_2d": [354, 448, 389, 466],
+      "description": "slight vertical mortar separation near upper center"
+    },
+    {
+      "bbox_2d": [176, 542, 206, 557],
+      "description": "minor horizontal mortar gap near lower left gable"
+    },
+    {
+      "bbox_2d": [527, 322, 548, 354],
+      "description": "circular hole in brickwork near apex, possible vent or defect"
+    },
+    {
+      "bbox_2d": [730, 33, 757, 60],
+      "description": "spalled brick at gable apex, edge damage visible"
+    },
+    {
+      "bbox_2d": [285, 407, 320, 422],
+      "description": "thin horizontal mortar line irregularity near upper left"
+    },
+    {
+      "bbox_2d": [511, 675, 747, 698],
+      "description": "horizontal mortar joint erosion at roofline flashing interface"
+    }
     ]
 }
 

@@ -12,4 +12,7 @@ DEFAULT_DATA = {
 }
 
 
+python annotate_bboxes_from_url.py --url "https://obj3423.public-dk6.clu4.obj.storagefactory.io/dev-poc-drone-images/Chat/Testpulje_small/Folder%202/DJI_0942.JPG" --export-yolo "yolo.txt" --out url_DJI_0942.jpg
+
+
 python annotate_bboxes_from_url.py --file "C:/Users/rico/Pictures/DJI_0942.jpg" --export-yolo "yolo.txt" --out an_DJI_0942.jpg
