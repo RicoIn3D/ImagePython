@@ -217,7 +217,7 @@ def main():
     print("-" * 70)
     
     try:
-        image_url = "https://example.com/brick-wall.jpg"  # Replace with your image URL
+        image_url = "https://obj3423.public-dk6.clu4.obj.storagefactory.io/dev-poc-drone-images/Chat/Testpulje/uploaded/DJI_0942.JPG"
         
         result = analyzer.analyze_brick_wall(
             image_source=image_url,
