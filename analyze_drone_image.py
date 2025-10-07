@@ -26,14 +26,21 @@ def analyze_drone_image():
     ollama_url = "http://localhost:11434/api/chat"
     
     payload = {
-        "model": "llava",
+        "model": "llava:13b",
         "messages": [
             {
                 "role": "system",
                 "content": (
-                    "You are an experienced architect inspecting structures from drone imagery. "
-                    "Analyze images for structural issues, cracks, mortar problems, water damage, "
-                    "and any defects. Be specific about locations and severity."
+                    "You are a senior structural inspector specializing in masonry failure analysis. Your task is to scan the "
+                    "entire brick wall surface in this image and identify every visible crack, hairline fracture, spalled brick,"
+                    " eroded mortar joint, displaced brick, or any deviation from uniform brickwork — no matter how small, faint, or ambiguous. "
+                    " \n\nAssume defects exist — your priority is sensitivity, not precision. Do not skip anything that could be a crack or mortar issue.  "
+                    "\n\nFor each defect:  \n- Output a tight bounding box in pixel coordinates: [x1, y1, x2, y2] (top-left origin).  "
+                    "\n- Write a concise technical description: e.g., 'vertical hairline crack in mortar', 'spalled brick at upper left',"
+                    " 'horizontal mortar erosion near roofline'.  \n\nReturn ONLY valid JSON in this exact format — no extra text, no explanations: "
+                    " \n{ \"cracks\": [ {\"bbox_2d\": [x1,y1,x2,y2], \"description\": \"...\"} ] }  \n\nIf you find absolutely nothing (unlikely), "
+                    "return { \"cracks\": [] }."
+                    "  \n\n⚠️ Never ignore thin lines, color variations, or irregularities — they may indicate early-stage cracking."
                 )
             },
             {
