@@ -16,3 +16,19 @@ python annotate_bboxes_from_url.py --url "https://obj3423.public-dk6.clu4.obj.st
 
 
 python annotate_bboxes_from_url.py --file "C:/Users/rico/Pictures/DJI_0942.jpg" --export-yolo "yolo.txt" --out an_DJI_0942.jpg
+
+
+# Læs YOLO labels og vis på billede
+python annotate_bboxes_multi_format.py --file "img.jpg" --labels-yolo "labels.txt"
+
+# Konverter YOLO → Qwen-1000
+python annotate_bboxes_multi_format.py --file "img.jpg" \
+  --labels-yolo "input.yolo.txt" --export-qwen "output.qwen.txt"
+
+# Konverter Qwen-1000 → YOLO
+python annotate_bboxes_multi_format.py --file "img.jpg" \
+  --labels-qwen "input.qwen.txt" --export-yolo "output.yolo.txt"
+
+# Læs YOLO og eksporter begge formater
+python annotate_bboxes_multi_format.py --file "img.jpg" \
+  --labels-yolo "input.txt" --export-yolo "out.yolo.txt" --export-qwen "out.qwen.txt"
