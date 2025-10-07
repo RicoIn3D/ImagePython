@@ -3,25 +3,26 @@
 Annotate bounding boxes on an image from multiple formats (Qwen-1000, YOLO, JSON).
 
 Supported formats:
-  - Qwen-1000: [x1, y1, x2, y2] in range 0..1000 (corners)
-  - YOLO: [xc, yc, w, h] normalized 0..1 (center + dimensions)
-  - JSON: {"boxes":[{"bbox_2d":[...], "description":"..."}]}
+  - Qwen-1000 txt: cls x1 y1 x2 y2 (0..1000)
+  - Qwen-1000 JSON: {"boxes": [{"bbox_2d": [x1, y1, x2, y2], ...}]}
+  - YOLO txt: cls xc yc w h (0..1)
+  - YOLO JSON: {"boxes": [{"bbox_2d": [cls, xc, yc, w, h], ...}]} or {"cracks": [...]}
 
 Dependencies: pillow, requests
     pip install pillow requests
 
 Usage examples:
-  # From Qwen-1000 label file
+  # From YOLO txt file
+  python annotate_bboxes_multi_format.py --file "img.jpg" --labels-yolo "labels.txt"
+
+  # From YOLO JSON file
+  python annotate_bboxes_multi_format.py --file "img.jpg" --data '{"boxes":[{"bbox_2d":[0,0.5,0.5,0.1,0.1],"description":"crack"}]}'
+
+  # From Qwen-1000 txt file
   python annotate_bboxes_multi_format.py --file "img.jpg" --labels-qwen "labels.qwen.txt"
 
-  # From YOLO label file
-  python annotate_bboxes_multi_format.py --file "img.jpg" --labels-yolo "labels.yolo.txt"
-
-  # Convert YOLO -> Qwen-1000
-  python annotate_bboxes_multi_format.py --file "img.jpg" --labels-yolo "labels.yolo.txt" --export-qwen "output.qwen.txt"
-
-  # Convert Qwen-1000 -> YOLO
-  python annotate_bboxes_multi_format.py --file "img.jpg" --labels-qwen "labels.qwen.txt" --export-yolo "output.yolo.txt"
+  # Convert between formats
+  python annotate_bboxes_multi_format.py --file "img.jpg" --labels-yolo "in.txt" --export-qwen "out.qwen.txt"
 """
 
 from __future__ import annotations
@@ -43,26 +44,14 @@ DEFAULT_IMAGE_URL = (
 
 DEFAULT_DATA = {
     "boxes": [
-         {
-      "bbox_2d": [
-        0,
-        0.371,
-        0.457,
-        0.035,
-        0.018
-      ],
-      "description": "slight vertical mortar separation"
-    },
-    {
-      "bbox_2d": [
-        0,
-        0.356,
-        0.568,
-        0.076,
-        0.026
-      ],
-      "description": "horizontal hairline crack in mortar joint"
-    }
+        {
+            "bbox_2d": [0, 0.371, 0.457, 0.035, 0.018],
+            "description": "slight vertical mortar separation"
+        },
+        {
+            "bbox_2d": [0, 0.356, 0.568, 0.076, 0.026],
+            "description": "horizontal hairline crack in mortar joint"
+        }
     ]
 }
 
@@ -176,14 +165,56 @@ def read_yolo_labels(path: str) -> List[Dict[str, Any]]:
 
 
 def parse_items_from_json(data: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """Find objects containing a 'bbox_2d' with Qwen-1000 corners."""
+    """Parse bounding boxes from JSON. Auto-detects YOLO or Qwen-1000 format based on bbox_2d length."""
     items: List[Dict[str, Any]] = []
-    for k, v in data.items():
-        if isinstance(v, list):
-            for el in v:
-                if isinstance(el, dict) and "bbox_2d" in el and isinstance(el["bbox_2d"], (list, tuple)) and len(el["bbox_2d"]) >= 4:
-                    el["format"] = "qwen"
-                    items.append(el)
+    
+    # Check both "boxes" and "cracks" keys
+    box_lists = []
+    if "boxes" in data and isinstance(data["boxes"], list):
+        box_lists.append(data["boxes"])
+    if "cracks" in data and isinstance(data["cracks"], list):
+        box_lists.append(data["cracks"])
+    
+    for box_list in box_lists:
+        for el in box_list:
+            if not isinstance(el, dict) or "bbox_2d" not in el:
+                continue
+            
+            bbox = el["bbox_2d"]
+            if not isinstance(bbox, (list, tuple)) or len(bbox) < 4:
+                continue
+            
+            # Auto-detect format based on length and values
+            if len(bbox) == 5:
+                # YOLO format: [cls, xc, yc, w, h] - all values 0..1
+                cls, xc, yc, w, h = map(float, bbox)
+                items.append({
+                    "yolo": [xc, yc, w, h],
+                    "class": int(cls),
+                    "description": el.get("description", "bbox"),
+                    "format": "yolo"
+                })
+            elif len(bbox) == 4:
+                # Check if it's YOLO (0..1) or Qwen-1000 (0..1000)
+                max_val = max(map(float, bbox))
+                if max_val <= 1.0:
+                    # YOLO format without class: [xc, yc, w, h]
+                    xc, yc, w, h = map(float, bbox)
+                    items.append({
+                        "yolo": [xc, yc, w, h],
+                        "class": el.get("class", 0),
+                        "description": el.get("description", "bbox"),
+                        "format": "yolo"
+                    })
+                else:
+                    # Qwen-1000 format: [x1, y1, x2, y2]
+                    items.append({
+                        "bbox_2d": [float(v) for v in bbox],
+                        "class": el.get("class", 0),
+                        "description": el.get("description", "bbox"),
+                        "format": "qwen"
+                    })
+    
     return items
 
 
@@ -201,7 +232,7 @@ def draw_boxes(img: Image.Image, items: List[Dict[str, Any]], box_width: int = 3
     img_w, img_h = img.size
 
     for idx, item in enumerate(items, start=1):
-        fmt = item.get("format", "qwen")
+        fmt = item.get("format", "yolo")
         
         if fmt == "yolo":
             yolo_data = item.get("yolo")
@@ -219,7 +250,7 @@ def draw_boxes(img: Image.Image, items: List[Dict[str, Any]], box_width: int = 3
                 cls = int(float(arr[0]))
             else:
                 x1, y1, x2, y2 = map(float, arr[0:4])
-                cls = item.get("class")
+                cls = item.get("class", 0)
             X1, Y1, X2, Y2 = qwen1000_corners_to_pixels(x1, y1, x2, y2, img_w, img_h)
 
         # Draw box
@@ -246,7 +277,7 @@ def export_yolo(items: List[Dict[str, Any]], out_path: str) -> None:
     """Write YOLO-normalized labels (cls xc yc w h)."""
     lines: List[str] = []
     for it in items:
-        fmt = it.get("format", "qwen")
+        fmt = it.get("format", "yolo")
         cls = int(it.get("class", 0))
         
         if fmt == "yolo":
@@ -274,7 +305,7 @@ def export_qwen(items: List[Dict[str, Any]], out_path: str) -> None:
     """Write Qwen-1000 labels (cls x1 y1 x2 y2)."""
     lines: List[str] = []
     for it in items:
-        fmt = it.get("format", "qwen")
+        fmt = it.get("format", "yolo")
         cls = int(it.get("class", 0))
         
         if fmt == "yolo":
@@ -312,7 +343,8 @@ def main():
     label_group = p.add_mutually_exclusive_group()
     label_group.add_argument("--labels-qwen", help="Qwen-1000 label file (cls x1 y1 x2 y2; coords in 0..1000)")
     label_group.add_argument("--labels-yolo", help="YOLO label file (cls xc yc w h; normalized 0..1)")
-    label_group.add_argument("--data", help="JSON with objects containing 'bbox_2d' in Qwen-1000 format")
+    label_group.add_argument("--json-file", help="JSON file with bounding boxes (auto-detects YOLO or Qwen-1000 format)")
+    label_group.add_argument("--data", help="JSON string with bounding boxes (auto-detects YOLO or Qwen-1000 format)")
     
     # Export options
     p.add_argument("--export-yolo", help="Save YOLO-normalized labels to this file")
@@ -353,6 +385,18 @@ def main():
             sys.exit(5)
         print(f"Reading YOLO labels from: {args.labels_yolo}")
         items = read_yolo_labels(args.labels_yolo)
+    elif args.json_file:
+        if not os.path.exists(args.json_file):
+            sys.stderr.write(f"JSON file does not exist: {args.json_file}\n")
+            sys.exit(5)
+        print(f"Reading JSON from file: {args.json_file}")
+        try:
+            with open(args.json_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except json.JSONDecodeError as e:
+            sys.stderr.write(f"Failed to parse JSON file: {e}\n")
+            sys.exit(2)
+        items = parse_items_from_json(data)
     else:
         if args.data:
             try:
@@ -367,7 +411,7 @@ def main():
             sys.stderr.write("No bbox items found.\n")
             sys.exit(1)
 
-    print(f"Found {len(items)} bounding boxes")
+    print(f"Found {len(items)} bounding boxes (format: {items[0].get('format', 'unknown') if items else 'none'})")
 
     # Draw & save
     annotated = draw_boxes(img, items)
