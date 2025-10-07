@@ -43,7 +43,26 @@ DEFAULT_IMAGE_URL = (
 
 DEFAULT_DATA = {
     "boxes": [
-       
+         {
+      "bbox_2d": [
+        0,
+        0.371,
+        0.457,
+        0.035,
+        0.018
+      ],
+      "description": "slight vertical mortar separation"
+    },
+    {
+      "bbox_2d": [
+        0,
+        0.356,
+        0.568,
+        0.076,
+        0.026
+      ],
+      "description": "horizontal hairline crack in mortar joint"
+    }
     ]
 }
 

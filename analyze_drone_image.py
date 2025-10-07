@@ -69,20 +69,40 @@ def analyze_drone_image():
             {
                 "role": "user",
                 "content": (
-                    "Your task is to scan the entire brick wall surface in this image and identify every visible crack, hairline fracture, spalled brick, "
-                    "eroded mortar joint, displaced brick, or any deviation from uniform brickwork — no matter how small, faint, or ambiguous. "
-                    "\n\nAssume defects exist — your priority is sensitivity, not precision. Do not skip anything that could be a crack or mortar issue. "
-                    "\n\nFor each defect: "
-                    "\n- Output a bounding box in YOLO normalized format: [class_id, x_center, y_center, width, height] where all coordinates are 0.0-1.0. "
-                    "\n- Write a concise technical description: e.g., 'vertical hairline crack in mortar', 'spalled brick at upper left', 'horizontal mortar erosion near roofline'. "
-                    "\n\nYOLO Bounding Box Format: Uses normalized coordinates in the pattern '<class_id> <x_center> <y_center> <width> <height>' "
-                    "where all values are normalized to 0.0-1.0 range relative to image dimensions. x_center and y_center represent "
-                    "the box center point (0.0=left/top edge, 1.0=right/bottom edge), while width and height are fractions of image dimensions. "
-                    "class_id is always 0 for cracks. "
-                    "\n\nReturn ONLY valid JSON in this exact format — no extra text, no explanations: "
-                    "\n{ \"cracks\": [ {\"bbox_2d\": [0, <x_center>, <y_center>, <width>, <height>], \"description\": \"...\"} ] } "
-                    "\n\nIf you find absolutely nothing (unlikely), return { \"cracks\": [] }. "
-                    "\n\n⚠️ Never ignore thin lines, color variations, or irregularities — they may indicate early-stage cracking."
+                    "You are inspecting a brick wall for structural defects. Scan EVERY part of the image systematically and identify ALL visible issues:\n"
+                    "- Cracks (hairline, vertical, horizontal, diagonal)\n"
+                    "- Mortar erosion or gaps in joints\n"
+                    "- Spalled or damaged bricks\n"
+                    "- Color variations indicating water damage\n"
+                    "- Any irregularities in the brickwork\n\n"
+                    
+                    "CRITICAL INSTRUCTIONS:\n"
+                    "1. Each defect needs its OWN SMALL bounding box - draw tight boxes around individual cracks, not large areas\n"
+                    "2. If you see 5 different cracks, create 5 separate bounding boxes\n"
+                    "3. Small cracks should have small boxes (width/height around 0.02-0.10)\n"
+                    "4. DO NOT create one large box covering multiple defects\n\n"
+                    
+                    "OUTPUT FORMAT - You MUST return EXACTLY 5 values in bbox_2d array:\n"
+                    "\"bbox_2d\": [0, x_center, y_center, width, height]\n\n"
+                    
+                    "Where:\n"
+                    "- First value is ALWAYS 0 (class_id for crack)\n"
+                    "- x_center: horizontal center of the crack (0.0=left edge, 1.0=right edge)\n"
+                    "- y_center: vertical center of the crack (0.0=top, 1.0=bottom)\n"
+                    "- width: crack width as fraction of image (typically 0.02-0.10 for thin cracks)\n"
+                    "- height: crack height as fraction of image (typically 0.02-0.10 for small cracks)\n\n"
+                    
+                    "EXAMPLE of correct format:\n"
+                    "{\n"
+                    "  \"cracks\": [\n"
+                    "    {\"bbox_2d\": [0, 0.356, 0.568, 0.076, 0.026], \"description\": \"horizontal hairline crack in mortar joint\"},\n"
+                    "    {\"bbox_2d\": [0, 0.291, 0.473, 0.033, 0.014], \"description\": \"faint horizontal mortar erosion\"},\n"
+                    "    {\"bbox_2d\": [0, 0.371, 0.457, 0.035, 0.018], \"description\": \"slight vertical mortar separation\"}\n"
+                    "  ]\n"
+                    "}\n\n"
+                    
+                    "Return ONLY valid JSON - no extra text. If you find nothing, return {\"cracks\": []}.\n"
+                    "⚠️ Be thorough - typical drone images have 5-15 detectable defects."
                 ),
                 "images": [image_base64]
             }
