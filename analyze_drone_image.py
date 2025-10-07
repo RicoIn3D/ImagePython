@@ -1,11 +1,41 @@
 #!/usr/bin/env python3
 """
-Quick script to analyze your drone image
+Quick script to analyze your drone image and save cracks in YOLO format
 """
 
 import requests
 import base64
 import json
+import os
+from pathlib import Path
+from urllib.parse import urlparse
+
+def get_filename_from_url(url: str) -> str:
+    """Extract filename from URL without extension."""
+    parsed = urlparse(url)
+    filename = os.path.basename(parsed.path)
+    return os.path.splitext(filename)[0]
+
+def save_yolo_labels(cracks: list, output_path: str) -> None:
+    """Save cracks in YOLO format to a text file."""
+    lines = []
+    for crack in cracks:
+        bbox = crack.get("bbox_2d", [])
+        if len(bbox) >= 5:
+            # Format: class_id x_center y_center width height
+            class_id = int(bbox[0])
+            x_center = float(bbox[1])
+            y_center = float(bbox[2])
+            width = float(bbox[3])
+            height = float(bbox[4])
+            lines.append(f"{class_id} {x_center:.6f} {y_center:.6f} {width:.6f} {height:.6f}")
+    
+    with open(output_path, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines))
+        if lines:
+            f.write("\n")
+    
+    print(f"✓ Saved {len(lines)} crack(s) to: {output_path}")
 
 def analyze_drone_image():
     # Your image URL
@@ -38,23 +68,21 @@ def analyze_drone_image():
             },
             {
                 "role": "user",
-                "content": (""
-                    " Your task is to scan the "
-                    "entire brick wall surface in this image and identify every visible crack, hairline fracture, spalled brick,"
-                    " eroded mortar joint, displaced brick, or any deviation from uniform brickwork — no matter how small, faint, or ambiguous. "
-                    " \n\nAssume defects exist — your priority is sensitivity, not precision. Do not skip anything that could be a crack or mortar issue.  "
-                    "\n\nFor each defect:  \n- Output a tight bounding box in pixel coordinates: [x1, y1, x2, y2] (top-left origin).  "
-                    "\n- Write a concise technical description: e.g., 'vertical hairline crack in mortar', 'spalled brick at upper left',"
-                    " 'horizontal mortar erosion near roofline'.  \n\nReturn ONLY valid JSON in this exact format  "
-                    "YOLO Bounding Box Format: Uses normalized coordinates in the pattern '<class_id> <x_center> <y_center> <width> <height>'"
-                    " where all values are space-separated and normalized to 0.0-1.0 range relative to image dimensions. x_center and y_center represent "
+                "content": (
+                    "Your task is to scan the entire brick wall surface in this image and identify every visible crack, hairline fracture, spalled brick, "
+                    "eroded mortar joint, displaced brick, or any deviation from uniform brickwork — no matter how small, faint, or ambiguous. "
+                    "\n\nAssume defects exist — your priority is sensitivity, not precision. Do not skip anything that could be a crack or mortar issue. "
+                    "\n\nFor each defect: "
+                    "\n- Output a bounding box in YOLO normalized format: [class_id, x_center, y_center, width, height] where all coordinates are 0.0-1.0. "
+                    "\n- Write a concise technical description: e.g., 'vertical hairline crack in mortar', 'spalled brick at upper left', 'horizontal mortar erosion near roofline'. "
+                    "\n\nYOLO Bounding Box Format: Uses normalized coordinates in the pattern '<class_id> <x_center> <y_center> <width> <height>' "
+                    "where all values are normalized to 0.0-1.0 range relative to image dimensions. x_center and y_center represent "
                     "the box center point (0.0=left/top edge, 1.0=right/bottom edge), while width and height are fractions of image dimensions. "
-                    "Each line in a .txt file represents one bounding box. Example: '0 0.5 0.5 0.3 0.4' means class 0, centered at 50%/50%, occupying 30% width and 40% height of the image."
-                    " The format is resolution-independent, center-based, and widely used across YOLOv3-v8 models."
-                    " — no extra text, no explanations: "
-                    " \n{ \"cracks\": [ {\"bbox_2d\": [0 ,<x_center>, <y_center>, <width> ,<height>], \"description\": \"...\"} ] }  \n\nIf you find absolutely nothing (unlikely), "
-                    "return { \"cracks\": [] }."
-                    "  \n\n⚠️ Never ignore thin lines, color variations, or irregularities — they may indicate early-stage cracking."
+                    "class_id is always 0 for cracks. "
+                    "\n\nReturn ONLY valid JSON in this exact format — no extra text, no explanations: "
+                    "\n{ \"cracks\": [ {\"bbox_2d\": [0, <x_center>, <y_center>, <width>, <height>], \"description\": \"...\"} ] } "
+                    "\n\nIf you find absolutely nothing (unlikely), return { \"cracks\": [] }. "
+                    "\n\n⚠️ Never ignore thin lines, color variations, or irregularities — they may indicate early-stage cracking."
                 ),
                 "images": [image_base64]
             }
@@ -91,15 +119,35 @@ def analyze_drone_image():
             print("=" * 70)
             print(json.dumps(findings, indent=2))
             
-            # Display summary
+            # Display summary and save YOLO labels
             if isinstance(findings, dict):
+                cracks = findings.get("cracks", [])
+                if cracks:
+                    print(f"\n✓ Found {len(cracks)} crack(s)")
+                    
+                    # Generate output filename based on image URL
+                    base_filename = get_filename_from_url(image_url)
+                    output_file = f"{base_filename}.txt"
+                    
+                    # Save in YOLO format
+                    save_yolo_labels(cracks, output_file)
+                    
+                    # Also save JSON for reference
+                    json_output_file = f"{base_filename}_analysis.json"
+                    with open(json_output_file, "w", encoding="utf-8") as f:
+                        json.dump(findings, f, indent=2)
+                    print(f"✓ Saved detailed analysis to: {json_output_file}")
+                else:
+                    print("\n✓ No cracks detected")
+                
                 if "findings" in findings:
-                    print(f"\n✓ Found {len(findings['findings'])} issue(s)")
+                    print(f"✓ Found {len(findings['findings'])} issue(s)")
                 if "overall_assessment" in findings:
                     print(f"✓ Assessment: {findings['overall_assessment']}")
                     
         except json.JSONDecodeError:
             print("\n(Note: Response is not in JSON format)")
+            print("Cannot save YOLO labels - invalid JSON response")
             
     except requests.exceptions.Timeout:
         print("✗ Request timed out. The image might be too large or Ollama is slow.")
