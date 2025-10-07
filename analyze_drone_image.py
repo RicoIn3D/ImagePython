@@ -94,7 +94,7 @@ def analyze_drone_image():
                     
                     "EXAMPLE of correct format:\n"
                     "{\n"
-                    "  \"cracks\": [\n"
+                    "  \"boxes\": [\n"
                     "    {\"bbox_2d\": [0, 0.356, 0.568, 0.076, 0.026], \"description\": \"horizontal hairline crack in mortar joint\"},\n"
                     "    {\"bbox_2d\": [0, 0.291, 0.473, 0.033, 0.014], \"description\": \"faint horizontal mortar erosion\"},\n"
                     "    {\"bbox_2d\": [0, 0.371, 0.457, 0.035, 0.018], \"description\": \"slight vertical mortar separation\"}\n"
