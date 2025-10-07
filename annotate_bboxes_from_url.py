@@ -273,6 +273,23 @@ def draw_boxes(img: Image.Image, items: List[Dict[str, Any]], box_width: int = 3
 
 # ---------------- Export Functions ----------------
 
+def save_yolo_classes(output_path: str) -> None:
+    """Save YOLO classes.txt file with class names."""
+    classes = [
+        "crack",
+        "spalling",
+        "mortar_erosion",
+        "water_damage",
+        "displacement",
+        "efflorescence",
+        "hole",
+        "deformation"
+    ]
+    
+    with open(output_path, "w", encoding="utf-8") as f:
+        f.write("\n".join(classes))
+        f.write("\n")
+
 def export_yolo(items: List[Dict[str, Any]], out_path: str) -> None:
     """Write YOLO-normalized labels (cls xc yc w h)."""
     lines: List[str] = []

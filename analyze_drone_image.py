@@ -37,6 +37,31 @@ def save_yolo_labels(cracks: list, output_path: str) -> None:
     
     print(f"✓ Saved {len(lines)} crack(s) to: {output_path}")
 
+def save_yolo_classes(output_path: str) -> None:
+    """Save YOLO classes.txt file with class names."""
+    classes = [
+        "crack",
+        "spalling",
+        "mortar_erosion",
+        "water_damage",
+        "displacement",
+        "efflorescence",
+        "hole",
+        "deformation"
+    ]
+    
+    with open(output_path, "w", encoding="utf-8") as f:
+        f.write("\n".join(classes))
+        f.write("\n")
+    
+    print(f"✓ Saved class definitions to: {output_path}")
+
+def create_results_folder() -> str:
+    """Create results subfolder if it doesn't exist."""
+    results_folder = "results"
+    os.makedirs(results_folder, exist_ok=True)
+    return results_folder
+
 def analyze_drone_image():
     # Your image URL
     image_url = "https://obj3423.public-dk6.clu4.obj.storagefactory.io/dev-poc-drone-images/Chat/Testpulje/uploaded/DJI_0942.JPG"
@@ -94,7 +119,7 @@ def analyze_drone_image():
                     
                     "EXAMPLE of correct format:\n"
                     "{\n"
-                    "  \"boxes\": [\n"
+                    "  \"cracks\": [\n"
                     "    {\"bbox_2d\": [0, 0.356, 0.568, 0.076, 0.026], \"description\": \"horizontal hairline crack in mortar joint\"},\n"
                     "    {\"bbox_2d\": [0, 0.291, 0.473, 0.033, 0.014], \"description\": \"faint horizontal mortar erosion\"},\n"
                     "    {\"bbox_2d\": [0, 0.371, 0.457, 0.035, 0.018], \"description\": \"slight vertical mortar separation\"}\n"
