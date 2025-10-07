@@ -37,3 +37,5 @@ python annotate_bboxes_multi_format.py --file "img.jpg" \
 
 python  annotate_bboxes_from_url.py  --url "https://obj3423.public-dk6.clu4.obj.storagefactory.io/dev-poc-drone-images/Chat/Testpulje_small/Folder%202/DJI_0942.JPG" --out url_DJI_0942.jpg  --json-file "DJI_0942_analysis.json"
 python  annotate_bboxes_from_url.py  --url "https://obj3423.public-dk6.clu4.obj.storagefactory.io/dev-poc-drone-images/Chat/Testpulje_small/Folder%202/DJI_0942.JPG" --out url_DJI_0942.jpg --json-file "DJI_0942_analysis.json"
+
+python annotate_bboxes_from_url.py  --file "results\DJI_0942.JPG"        --json-file "results\DJI_0942_analysis.json"        --out "annotated_DJI_0942.jpg"        --export-yolo "DJI_0942_yolo.txt"

@@ -367,6 +367,7 @@ def main():
     p.add_argument("--export-yolo", help="Save YOLO-normalized labels to this file")
     p.add_argument("--export-qwen", help="Save Qwen-1000 labels to this file")
     p.add_argument("--out", default="annotated_output.jpg", help="Output annotated image filename")
+    p.add_argument("--results-folder", default="results", help="Output folder for all results (default: results)")
     
     args = p.parse_args()
 
@@ -430,19 +431,35 @@ def main():
 
     print(f"Found {len(items)} bounding boxes (format: {items[0].get('format', 'unknown') if items else 'none'})")
 
+    # Create results folder
+    results_folder = args.results_folder
+    os.makedirs(results_folder, exist_ok=True)
+    
+    # Prepare output paths in results folder
+    output_image = os.path.join(results_folder, os.path.basename(args.out))
+
     # Draw & save
     annotated = draw_boxes(img, items)
-    annotated.save(args.out, quality=95)
-    print(f"Saved annotated image: {args.out} | size: {annotated.size[0]}x{annotated.size[1]}")
+    annotated.save(output_image, quality=95)
+    print(f"Saved annotated image: {output_image} | size: {annotated.size[0]}x{annotated.size[1]}")
 
     # Export conversions
     if args.export_yolo:
-        export_yolo(items, args.export_yolo)
-        print(f"Exported YOLO-normalized labels -> {args.export_yolo}")
+        yolo_path = os.path.join(results_folder, os.path.basename(args.export_yolo))
+        export_yolo(items, yolo_path)
+        print(f"Exported YOLO-normalized labels -> {yolo_path}")
+        
+        # Also save classes.txt
+        classes_path = os.path.join(results_folder, "classes.txt")
+        save_yolo_classes(classes_path)
+        print(f"Exported YOLO class definitions -> {classes_path}")
     
     if args.export_qwen:
-        export_qwen(items, args.export_qwen)
-        print(f"Exported Qwen-1000 labels -> {args.export_qwen}")
+        qwen_path = os.path.join(results_folder, os.path.basename(args.export_qwen))
+        export_qwen(items, qwen_path)
+        print(f"Exported Qwen-1000 labels -> {qwen_path}")
+    
+    print(f"\n📁 All files saved to: {results_folder}/")
 
 
 if __name__ == "__main__":

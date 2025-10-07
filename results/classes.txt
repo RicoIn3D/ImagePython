@@ -1,1 +1,8 @@
 crack
+spalling
+mortar_erosion
+water_damage
+displacement
+efflorescence
+hole
+deformation

@@ -66,13 +66,25 @@ def analyze_drone_image():
     # Your image URL
     image_url = "https://obj3423.public-dk6.clu4.obj.storagefactory.io/dev-poc-drone-images/Chat/Testpulje/uploaded/DJI_0942.JPG"
     
+    # Create results folder
+    results_folder = create_results_folder()
+    base_filename = get_filename_from_url(image_url)
+    
     print("Downloading image...")
     # Download and convert to base64
     try:
         response = requests.get(image_url, timeout=30)
         response.raise_for_status()
-        image_base64 = base64.b64encode(response.content).decode('utf-8')
+        image_data = response.content
+        image_base64 = base64.b64encode(image_data).decode('utf-8')
         print(f"✓ Image downloaded successfully ({len(image_base64)} bytes)")
+        
+        # Save image to results folder
+        image_path = os.path.join(results_folder, f"{base_filename}.JPG")
+        with open(image_path, "wb") as f:
+            f.write(image_data)
+        print(f"✓ Image saved to: {image_path}")
+        
     except Exception as e:
         print(f"✗ Failed to download image: {e}")
         return
@@ -166,22 +178,36 @@ def analyze_drone_image():
             
             # Display summary and save YOLO labels
             if isinstance(findings, dict):
-                cracks = findings.get("cracks", [])
+                cracks = findings.get("cracks", []) or findings.get("boxes", [])
                 if cracks:
                     print(f"\n✓ Found {len(cracks)} crack(s)")
                     
                     # Generate output filename based on image URL
                     base_filename = get_filename_from_url(image_url)
-                    output_file = f"{base_filename}.txt"
                     
-                    # Save in YOLO format
+                    # Save in YOLO format to results folder
+                    output_file = os.path.join(results_folder, f"{base_filename}.txt")
                     save_yolo_labels(cracks, output_file)
                     
+                    # Save YOLO classes file
+                    classes_file = os.path.join(results_folder, "classes.txt")
+                    save_yolo_classes(classes_file)
+                    
                     # Also save JSON for reference
-                    json_output_file = f"{base_filename}_analysis.json"
+                    json_output_file = os.path.join(results_folder, f"{base_filename}_analysis.json")
                     with open(json_output_file, "w", encoding="utf-8") as f:
                         json.dump(findings, f, indent=2)
                     print(f"✓ Saved detailed analysis to: {json_output_file}")
+                    
+                    print(f"\n📁 All files saved to: {results_folder}/")
+                    print("\n" + "=" * 70)
+                    print("NEXT STEP: Annotate the image with bounding boxes")
+                    print("=" * 70)
+                    print(f"Run: python annotate_bboxes_from_url.py \\")
+                    print(f"       --file \"{image_path}\" \\")
+                    print(f"       --json-file \"{json_output_file}\" \\")
+                    print(f"       --out \"annotated_{base_filename}.jpg\" \\")
+                    print(f"       --export-yolo \"{base_filename}_yolo.txt\"")
                 else:
                     print("\n✓ No cracks detected")
                 
