@@ -31,31 +31,26 @@ def analyze_drone_image():
             {
                 "role": "system",
                 "content": (
-                    "You are a senior structural inspector specializing in masonry failure analysis. Your task is to scan the "
+                    "You are an experienced architect inspecting structures from drone imagery. "
+                    "Analyze images for structural issues, cracks, mortar problems, water damage, "
+                    "and any defects. Be specific about locations and severity."                  
+                )
+            },
+            {
+                "role": "user",
+                "content": (""
+                    " Your task is to scan the "
                     "entire brick wall surface in this image and identify every visible crack, hairline fracture, spalled brick,"
                     " eroded mortar joint, displaced brick, or any deviation from uniform brickwork — no matter how small, faint, or ambiguous. "
                     " \n\nAssume defects exist — your priority is sensitivity, not precision. Do not skip anything that could be a crack or mortar issue.  "
                     "\n\nFor each defect:  \n- Output a tight bounding box in pixel coordinates: [x1, y1, x2, y2] (top-left origin).  "
                     "\n- Write a concise technical description: e.g., 'vertical hairline crack in mortar', 'spalled brick at upper left',"
-                    " 'horizontal mortar erosion near roofline'.  \n\nReturn ONLY valid JSON in this exact format — no extra text, no explanations: "
+                    " 'horizontal mortar erosion near roofline'.  \n\nReturn ONLY valid JSON in this exact format  "
+                    "coordinates (x_min, y_min, x_max, y_max), where (x_min, y_min) is the top-left corner of the box and (x_max, y_max) is the bottom-right corner"
+                    " — no extra text, no explanations: "
                     " \n{ \"cracks\": [ {\"bbox_2d\": [x1,y1,x2,y2], \"description\": \"...\"} ] }  \n\nIf you find absolutely nothing (unlikely), "
                     "return { \"cracks\": [] }."
                     "  \n\n⚠️ Never ignore thin lines, color variations, or irregularities — they may indicate early-stage cracking."
-                )
-            },
-            {
-                "role": "user",
-                "content": (
-                    "Analyze this drone image of a structure. Identify:\n"
-                    "1. Type of structure (building, wall, roof, etc.)\n"
-                    "2. Any visible cracks or damage\n"
-                    "3. Mortar condition (if applicable)\n"
-                    "4. Signs of water damage or discoloration\n"
-                    "5. Overall structural condition\n\n"
-                    "Provide findings in JSON format with:\n"
-                    "- findings: array of issues found\n"
-                    "- each finding should have: location, severity, type, description\n"
-                    "- overall_assessment: summary of condition"
                 ),
                 "images": [image_base64]
             }
