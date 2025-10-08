@@ -1,0 +1,74 @@
+# Results folder - generated output from image analysis
+results/
+
+# Python cache and compiled files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Virtual environment
+venv/
+env/
+ENV/
+.venv/
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+
+# Temporary files
+*.log
+*.tmp
+temp_*.py
+
+# Downloaded images (if you want to ignore them)
+# *.jpg
+# *.jpeg
+# *.png
+# *.JPG
+# *.JPEG
+# *.PNG
+
+# Analysis outputs (already covered by results/ but just in case)
+*_analysis.json
+*_annotated.*
+annotated_*.jpg
+classes.txt

@@ -56,20 +56,6 @@ def create_output_folder(run_id: str, filename: str) -> str:
     os.makedirs(output_path, exist_ok=True)
     return output_path
 
-def modify_analyze_script(url: str, temp_script: str) -> None:
-    """Create a temporary version of analyze script with the given URL."""
-    with open("analyze_drone_image_yolo.py", "r", encoding="utf-8") as f:
-        content = f.read()
-    
-    # Replace the hardcoded URL
-    content = content.replace(
-        'image_url = "https://obj3423.public-dk6.clu4.obj.storagefactory.io/dev-poc-drone-images/Chat/Testpulje/uploaded/DJI_0942.JPG"',
-        f'image_url = "{url}"'
-    )
-    
-    with open(temp_script, "w", encoding="utf-8") as f:
-        f.write(content)
-
 def process_single_image(url: str, run_id: str, index: int, total: int) -> bool:
     """Process a single image through both scripts."""
     
@@ -81,24 +67,17 @@ def process_single_image(url: str, run_id: str, index: int, total: int) -> bool:
     # Get filename without extension
     filename, ext = get_filename_from_url(url)
     
-    # Step 1: Run analyze_drone_image_yolo.py with modified URL
+    # Step 1: Run analyze_drone_image_yolo.py with URL parameter
     print("\n[Step 1/3] Running analysis...")
-    temp_script = "temp_analyze.py"
     
-    try:
-        modify_analyze_script(url, temp_script)
-        result = os.system(f'python "{temp_script}"')
-        
-        if result != 0:
-            print(f"  ✗ Analysis failed with exit code {result}")
-            return False
-        
-        print("  ✓ Analysis complete")
-        
-    finally:
-        # Clean up temp script
-        if os.path.exists(temp_script):
-            os.remove(temp_script)
+    cmd = f'python analyze_drone_image_yolo.py --url "{url}"'
+    result = os.system(cmd)
+    
+    if result != 0:
+        print(f"  ✗ Analysis failed with exit code {result}")
+        return False
+    
+    print("  ✓ Analysis complete")
     
     # Check if results were created
     results_base = "results"

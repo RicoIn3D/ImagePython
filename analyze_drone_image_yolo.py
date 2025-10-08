@@ -1,12 +1,17 @@
 #!/usr/bin/env python3
 """
 Quick script to analyze your drone image and save cracks in YOLO format
+
+Usage:
+  python analyze_drone_image_yolo.py
+  python analyze_drone_image_yolo.py --url "https://example.com/image.jpg"
 """
 
 import requests
 import base64
 import json
 import os
+import argparse
 from pathlib import Path
 from urllib.parse import urlparse
 
