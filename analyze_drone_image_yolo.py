@@ -46,6 +46,26 @@ def save_yolo_classes(output_path: str) -> None:
     
     print(f"✓ Saved class definitions to: {output_path}")
 
+def save_yolo_labels_simple(cracks: list, output_path: str) -> None:
+    """Save cracks in YOLO format - expects [class_id, xc, yc, w, h]."""
+    lines = []
+    for crack in cracks:
+        bbox = crack.get("bbox_2d", [])
+        if len(bbox) >= 5:
+            class_id = int(bbox[0])
+            x_center = float(bbox[1])
+            y_center = float(bbox[2])
+            width = float(bbox[3])
+            height = float(bbox[4])
+            lines.append(f"{class_id} {x_center:.6f} {y_center:.6f} {width:.6f} {height:.6f}")
+    
+    with open(output_path, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines))
+        if lines:
+            f.write("\n")
+    
+    print(f"✓ Saved {len(lines)} crack(s) to: {output_path}")
+
 def convert_qwen1000_to_yolo(bbox_qwen: list, class_id: int = 0) -> list:
     """Convert Qwen-1000 format [x1,y1,x2,y2] to YOLO [class,xc,yc,w,h]."""
     if len(bbox_qwen) != 4:
@@ -242,29 +262,63 @@ def analyze_drone_image(image_url: str, model_name: str = "llava:13b"):
         return
     
     # Prepare Ollama API request
-    ollama_url = "http://localhost:11434/api/chat"
+    ollama_url = "http://192.168.87.207:11434/api/chat"
     
-    # Get model-specific prompt
-    user_prompt, format_type = get_prompt_for_model(model_name)
-    print(f"Using {format_type} coordinate format for {model_name}")
+    # Focused prompt: Find brick wall FIRST, then find cracks
+    prompt = (
+        "TASK: Find cracks and defects in the brick wall of this building.\n\n"
+        
+        "STEP 1 - IDENTIFY THE BRICK WALL:\n"
+        "Look at the entire image carefully.\n"
+        "The brick wall is the reddish-brown masonry surface with visible bricks and mortar.\n"
+        "It may be anywhere in the image - left, right, center, upper, or lower areas.\n"
+        "Identify the EXACT region where you see the brick wall.\n"
+        "IGNORE: sky, clouds, trees, grass, roads, other buildings in background.\n\n"
+        
+        "STEP 2 - FIND DEFECTS ON THE BRICK WALL:\n"
+        "Now look ONLY at the brick wall area you identified.\n"
+        "Find these types of defects:\n"
+        "- Cracks in bricks or mortar joints\n"
+        "- Mortar erosion (gaps in white mortar between bricks)\n"
+        "- Spalled or damaged bricks\n"
+        "- Color variations indicating damage\n\n"
+        
+        "STEP 3 - CREATE BOUNDING BOXES:\n"
+        "For each defect found, create ONE small bounding box.\n"
+        "The box should tightly fit around the defect.\n\n"
+        
+        "FORMAT: [class_id, x_center, y_center, width, height]\n"
+        "- class_id: Always 0\n"
+        "- x_center, y_center: Center of box (0.0-1.0, where 0,0 is top-left corner)\n"
+        "- width, height: Size of box (0.02-0.10 for small defects)\n\n"
+        
+        "IMPORTANT VALIDATION:\n"
+        "Before adding each box, ask yourself:\n"
+        "1. Is this box ON the brick wall surface? (not on sky/background)\n"
+        "2. Is there a visible defect at this location?\n"
+        "3. Is the box small and tight around the defect?\n\n"
+        
+        "OUTPUT FORMAT:\n"
+        "{\n"
+        "  \"cracks\": [\n"
+        "    {\"bbox_2d\": [0, 0.45, 0.50, 0.06, 0.03], \"description\": \"horizontal crack in mortar joint\"},\n"
+        "    {\"bbox_2d\": [0, 0.52, 0.48, 0.04, 0.02], \"description\": \"vertical crack in brick\"}\n"
+        "  ]\n"
+        "}\n\n"
+        
+        "Find 3-12 defects if visible. Return ONLY valid JSON. No extra text."
+    )
     
     payload = {
         "model": model_name,
         "messages": [
             {
                 "role": "system",
-                "content": (
-                    "You are an expert structural engineer specializing in drone-based building inspections. "
-                    "Your task is to analyze images for structural defects with high precision. "
-                    "You must identify cracks, mortar erosion, spalling, water damage, and other defects. "
-                    "CRITICAL: Focus ONLY on the brick/masonry surfaces. Ignore sky, clouds, trees, and background. "
-                    "Provide accurate bounding box coordinates where origin (0,0) is at TOP-LEFT corner. "
-                    "Be thorough, systematic, and precise with spatial measurements."
-                )
+                "content": "You are a vision AI analyzing building images. Follow the format instructions EXACTLY. Each bbox_2d must have exactly 5 numbers."
             },
             {
                 "role": "user",
-                "content": user_prompt,
+                "content": prompt,
                 "images": [image_base64]
             }
         ],
@@ -306,9 +360,9 @@ def analyze_drone_image(image_url: str, model_name: str = "llava:13b"):
                 if cracks:
                     print(f"\n✓ Found {len(cracks)} crack(s)")
                     
-                    # Save in YOLO format to results folder (auto-convert if needed)
+                    # Save in YOLO format (simple version)
                     output_file = os.path.join(results_folder, f"{base_filename}.txt")
-                    save_yolo_labels_auto(cracks, output_file, format_type)
+                    save_yolo_labels_simple(cracks, output_file)
                     
                     # Save YOLO classes file
                     classes_file = os.path.join(results_folder, "classes.txt")

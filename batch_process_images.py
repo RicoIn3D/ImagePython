@@ -67,10 +67,10 @@ def process_single_image(url: str, run_id: str, index: int, total: int) -> bool:
     # Get filename without extension
     filename, ext = get_filename_from_url(url)
     
-    # Step 1: Run analyze_drone_image_yolo.py with URL parameter
+    # Step 1: Run analyze_drone_image_yolo.py with URL parameter  models: --model "llava:13b" or --model "qwen2.5vl:latest"
     print("\n[Step 1/3] Running analysis...")
     
-    cmd = f'python analyze_drone_image_yolo.py --url "{url}"'
+    cmd = f'python analyze_drone_image_yolo.py --url "{url}" --model "qwen2.5vl:latest" '
     result = os.system(cmd)
     
     if result != 0:
