@@ -398,7 +398,7 @@ def analyze_drone_image(image_url: str, model_name: str = "llava:13b"):
     except requests.exceptions.Timeout:
         print("✗ Request timed out. The image might be too large or Ollama is slow.")
     except requests.exceptions.ConnectionError:
-        print("✗ Cannot connect to Ollama. Make sure it's running on http://localhost:11434")
+        print("✗ Cannot connect to Ollama. Make sure it's running on http://192.168.87.207:11434")
         print("  Run: ollama serve")
     except Exception as e:
         print(f"✗ Error: {e}")
@@ -425,7 +425,7 @@ if __name__ == "__main__":
     
     # Check if Ollama is running
     try:
-        health_check = requests.get("http://localhost:11434/api/tags", timeout=5)
+        health_check = requests.get("http://192.168.87.207:11434/api/tags", timeout=5)
         if health_check.status_code == 200:
             models = health_check.json().get("models", [])
             model_names = [m.get("name") for m in models]
