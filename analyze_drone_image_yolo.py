@@ -67,10 +67,8 @@ def create_results_folder() -> str:
     os.makedirs(results_folder, exist_ok=True)
     return results_folder
 
-def analyze_drone_image():
-    # Your image URL
-    image_url = "https://obj3423.public-dk6.clu4.obj.storagefactory.io/dev-poc-drone-images/Chat/Testpulje/uploaded/DJI_0942.JPG"
-    
+def analyze_drone_image(image_url: str):
+    """Analyze a drone image from the given URL."""
     # Create results folder
     results_folder = create_results_folder()
     base_filename = get_filename_from_url(image_url)
@@ -234,8 +232,17 @@ def analyze_drone_image():
         print(f"✗ Error: {e}")
 
 if __name__ == "__main__":
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(description="Analyze drone images for structural defects")
+    parser.add_argument(
+        "--url", 
+        required=True,
+        help="Image URL to analyze"
+    )
+    args = parser.parse_args()
+    
     print("=" * 70)
-    print("DRONE IMAGE ANALYSIS - DJI_0942.JPG")
+    print(f"DRONE IMAGE ANALYSIS - {os.path.basename(urlparse(args.url).path)}")
     print("=" * 70)
     print()
     
@@ -261,4 +268,4 @@ if __name__ == "__main__":
         print("  And llava model is installed: ollama pull llava")
         exit(1)
     
-    analyze_drone_image()
+    analyze_drone_image(args.url)
