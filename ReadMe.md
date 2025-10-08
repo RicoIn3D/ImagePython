@@ -15,3 +15,7 @@ python batch_process_images.py --urls image_urls.txt --run-id PILOT_01
 python analyze_drone_image_yolo.py --url "https://example.com/image.jpg"
 
 python batch_process_images.py --urls image_urls.txt --run-id BATCH_001
+
+python analyze_drone_image_yolo.py --url "https://obj3423.public-dk6.clu4.obj.storagefactory.io/dev-poc-drone-images/Chat/Testpulje/uploaded/DJI_4420.JPG" --model "qwen2.5vl:latest"
+
+  python analyze_drone_image_yolo.py --url "https://obj3423.public-dk6.clu4.obj.storagefactory.io/dev-poc-drone-images/Chat/Testpulje/uploaded/DJI_4420.JPG" --model "llava:13b"

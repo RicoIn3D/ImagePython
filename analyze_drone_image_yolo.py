@@ -21,26 +21,11 @@ def get_filename_from_url(url: str) -> str:
     filename = os.path.basename(parsed.path)
     return os.path.splitext(filename)[0]
 
-def save_yolo_labels(cracks: list, output_path: str) -> None:
-    """Save cracks in YOLO format to a text file."""
-    lines = []
-    for crack in cracks:
-        bbox = crack.get("bbox_2d", [])
-        if len(bbox) >= 5:
-            # Format: class_id x_center y_center width height
-            class_id = int(bbox[0])
-            x_center = float(bbox[1])
-            y_center = float(bbox[2])
-            width = float(bbox[3])
-            height = float(bbox[4])
-            lines.append(f"{class_id} {x_center:.6f} {y_center:.6f} {width:.6f} {height:.6f}")
-    
-    with open(output_path, "w", encoding="utf-8") as f:
-        f.write("\n".join(lines))
-        if lines:
-            f.write("\n")
-    
-    print(f"✓ Saved {len(lines)} crack(s) to: {output_path}")
+def create_results_folder() -> str:
+    """Create results subfolder if it doesn't exist."""
+    results_folder = "results"
+    os.makedirs(results_folder, exist_ok=True)
+    return results_folder
 
 def save_yolo_classes(output_path: str) -> None:
     """Save YOLO classes.txt file with class names."""
@@ -61,11 +46,175 @@ def save_yolo_classes(output_path: str) -> None:
     
     print(f"✓ Saved class definitions to: {output_path}")
 
-def create_results_folder() -> str:
-    """Create results subfolder if it doesn't exist."""
-    results_folder = "results"
-    os.makedirs(results_folder, exist_ok=True)
-    return results_folder
+def convert_qwen1000_to_yolo(bbox_qwen: list, class_id: int = 0) -> list:
+    """Convert Qwen-1000 format [x1,y1,x2,y2] to YOLO [class,xc,yc,w,h]."""
+    if len(bbox_qwen) != 4:
+        return None
+    
+    x1, y1, x2, y2 = bbox_qwen
+    
+    # Convert from 0-1000 range to 0-1 range
+    x1 = x1 / 1000.0
+    y1 = y1 / 1000.0
+    x2 = x2 / 1000.0
+    y2 = y2 / 1000.0
+    
+    # Convert corners to center + dimensions
+    x_center = (x1 + x2) / 2.0
+    y_center = (y1 + y2) / 2.0
+    width = x2 - x1
+    height = y2 - y1
+    
+    return [class_id, x_center, y_center, width, height]
+
+def save_yolo_labels_auto(cracks: list, output_path: str, format_type: str) -> None:
+    """Save cracks in YOLO format, auto-converting from Qwen-1000 if needed."""
+    lines = []
+    
+    for crack in cracks:
+        bbox = crack.get("bbox_2d", [])
+        
+        if not bbox:
+            continue
+        
+        # Detect format and convert if necessary
+        if format_type == "Qwen-1000" and len(bbox) == 4:
+            # Convert Qwen-1000 to YOLO
+            yolo_bbox = convert_qwen1000_to_yolo(bbox, class_id=0)
+            if yolo_bbox:
+                class_id, x_center, y_center, width, height = yolo_bbox
+                lines.append(f"{class_id} {x_center:.6f} {y_center:.6f} {width:.6f} {height:.6f}")
+        
+        elif len(bbox) >= 5:
+            # Already YOLO format
+            class_id = int(bbox[0])
+            x_center = float(bbox[1])
+            y_center = float(bbox[2])
+            width = float(bbox[3])
+            height = float(bbox[4])
+            lines.append(f"{class_id} {x_center:.6f} {y_center:.6f} {width:.6f} {height:.6f}")
+    
+    with open(output_path, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines))
+        if lines:
+            f.write("\n")
+    
+    print(f"✓ Saved {len(lines)} crack(s) to: {output_path} (YOLO format)")
+
+def get_prompt_for_model(model_name: str) -> tuple[str, str]:
+    """Get appropriate prompt based on model type. Returns (user_prompt, format_type)."""
+    
+    is_qwen = "qwen" in model_name.lower()
+    
+    if is_qwen:
+        # Qwen-1000 format: [x1, y1, x2, y2] in 0..1000 range
+        format_description = (
+            "OUTPUT FORMAT - Qwen-1000 corners format:\n"
+            "\"bbox_2d\": [x1, y1, x2, y2]\n\n"
+            
+            "Where ALL values are in the range 0-1000 (NOT 0-1):\n"
+            "- x1: left edge X coordinate (0 = left edge, 1000 = right edge)\n"
+            "- y1: top edge Y coordinate (0 = TOP edge, 1000 = BOTTOM edge)\n"
+            "- x2: right edge X coordinate (0 = left edge, 1000 = right edge)\n"
+            "- y2: bottom edge Y coordinate (0 = TOP edge, 1000 = BOTTOM edge)\n\n"
+            
+            "CRITICAL: Values are 0-1000, independent of actual image size.\n"
+            "A box from 20% to 30% horizontally and 35% to 40% vertically would be:\n"
+            "[200, 350, 300, 400]\n\n"
+        )
+        
+        example = (
+            "REALISTIC EXAMPLE - defects on brick wall in middle of image (Qwen-1000 format):\n"
+            "{\n"
+            "  \"cracks\": [\n"
+            "    {\"bbox_2d\": [320, 350, 400, 380], \"description\": \"horizontal crack in mortar - values are 0-1000\"},\n"
+            "    {\"bbox_2d\": [450, 380, 500, 400], \"description\": \"vertical crack in brick - x1,y1 is top-left, x2,y2 is bottom-right\"},\n"
+            "    {\"bbox_2d\": [250, 320, 290, 340], \"description\": \"mortar erosion - all coordinates in 0-1000 range\"}\n"
+            "  ]\n"
+            "}\n\n"
+        )
+    else:
+        # YOLO format: [class_id, x_center, y_center, width, height] in 0..1 range
+        format_description = (
+            "OUTPUT FORMAT - YOLO normalized format:\n"
+            "\"bbox_2d\": [class_id, x_center, y_center, width, height]\n\n"
+            
+            "Where ALL values are normalized to 0.0-1.0 range:\n"
+            "- class_id: Always 0 for cracks\n"
+            "- x_center: horizontal center (0.0=left, 1.0=right)\n"
+            "- y_center: vertical center measured FROM TOP (0.0=top, 1.0=bottom)\n"
+            "- width: box width as fraction (typically 0.02-0.10)\n"
+            "- height: box height as fraction (typically 0.02-0.10)\n\n"
+            
+            "CRITICAL: All coordinates are 0.0-1.0, representing fractions of image dimensions.\n\n"
+        )
+        
+        example = (
+            "REALISTIC EXAMPLE - defects on brick wall in middle of image (YOLO format):\n"
+            "{\n"
+            "  \"cracks\": [\n"
+            "    {\"bbox_2d\": [0, 0.35, 0.38, 0.08, 0.03], \"description\": \"horizontal crack - center at 35%,38% with 8%x3% size\"},\n"
+            "    {\"bbox_2d\": [0, 0.50, 0.42, 0.05, 0.02], \"description\": \"vertical crack - all values are 0-1 fractions\"},\n"
+            "    {\"bbox_2d\": [0, 0.28, 0.35, 0.04, 0.02], \"description\": \"mortar erosion - class_id=0, then center_x, center_y, width, height\"}\n"
+            "  ]\n"
+            "}\n\n"
+        )
+    
+    common_instructions = (
+        "You are inspecting a BRICK WALL for structural defects. Focus ONLY on the brick/masonry surfaces.\n\n"
+        
+        "IGNORE these areas:\n"
+        "- Sky and clouds (usually in upper portion)\n"
+        "- Trees, vehicles, ground\n"
+        "- Any non-brick surfaces\n\n"
+        
+        "FOCUS ONLY on the brick wall and scan it systematically for:\n"
+        "- Cracks (hairline, vertical, horizontal, diagonal)\n"
+        "- Mortar erosion or gaps in joints\n"
+        "- Spalled or damaged bricks\n"
+        "- Color variations indicating water damage\n"
+        "- Any irregularities in the brickwork\n\n"
+        
+        "CRITICAL INSTRUCTIONS:\n"
+        "1. Each defect needs its OWN SMALL bounding box - draw tight boxes around individual cracks\n"
+        "2. If you see 5 different cracks, create 5 separate bounding boxes\n"
+        "3. Small cracks should have small boxes\n"
+        "4. DO NOT create one large box covering multiple defects\n"
+        "5. ONLY place boxes on the BRICK SURFACE, never on sky/clouds\n\n"
+        
+        "VISUAL GUIDANCE:\n"
+        "The brick gable/wall is typically reddish-brown colored masonry.\n"
+        "Place bounding boxes ONLY on visible defects in this brick surface.\n"
+        "If you see white mortar lines between bricks, defects are usually along these lines.\n\n"
+        
+        "COORDINATE SYSTEM:\n"
+        "Origin (0,0) is at TOP-LEFT corner. Y increases downwards.\n"
+        "- Y near 0 = top of image (often sky)\n"
+        "- Y near middle = center of image (often brick wall)\n"
+        "- Y near max = bottom of image (often ground/roof)\n\n"
+        
+        "⚠️ CRITICAL MISTAKES TO AVOID:\n"
+        "1. Do NOT place bounding boxes in the sky/clouds\n"
+        "2. Do NOT place boxes on background buildings, trees, or ground\n"
+        "3. ONLY place boxes directly on the brick wall surface where you see actual defects\n"
+        "4. Measure carefully relative to the ENTIRE image\n\n"
+    )
+    
+    closing = (
+        "BEFORE YOU RESPOND:\n"
+        "1. Identify where the brick wall is located in the image\n"
+        "2. Ignore sky, clouds, and background\n"
+        "3. Look for actual defects ONLY on the brick surface\n"
+        "4. Measure coordinates carefully\n\n"
+        
+        "Return ONLY valid JSON - no extra text. If no defects found, return {\"cracks\": []}.\n"
+        "⚠️ Be thorough and ACCURATE - focus on BRICK WALL only, typical images have 5-15 defects."
+    )
+    
+    full_prompt = common_instructions + format_description + example + closing
+    format_type = "Qwen-1000" if is_qwen else "YOLO"
+    
+    return full_prompt, format_type
 
 def analyze_drone_image(image_url: str, model_name: str = "llava:13b"):
     """Analyze a drone image from the given URL."""
@@ -95,6 +244,10 @@ def analyze_drone_image(image_url: str, model_name: str = "llava:13b"):
     # Prepare Ollama API request
     ollama_url = "http://localhost:11434/api/chat"
     
+    # Get model-specific prompt
+    user_prompt, format_type = get_prompt_for_model(model_name)
+    print(f"Using {format_type} coordinate format for {model_name}")
+    
     payload = {
         "model": model_name,
         "messages": [
@@ -104,66 +257,14 @@ def analyze_drone_image(image_url: str, model_name: str = "llava:13b"):
                     "You are an expert structural engineer specializing in drone-based building inspections. "
                     "Your task is to analyze images for structural defects with high precision. "
                     "You must identify cracks, mortar erosion, spalling, water damage, and other defects. "
-                    "CRITICAL: You must provide accurate bounding box coordinates in YOLO format where the origin (0,0) is at the TOP-LEFT corner. "
-                    "Always measure y-coordinates from the TOP of the image downwards. "
+                    "CRITICAL: Focus ONLY on the brick/masonry surfaces. Ignore sky, clouds, trees, and background. "
+                    "Provide accurate bounding box coordinates where origin (0,0) is at TOP-LEFT corner. "
                     "Be thorough, systematic, and precise with spatial measurements."
                 )
             },
             {
                 "role": "user",
-                "content": (
-                    "You are inspecting a brick wall for structural defects. Scan EVERY part of the image systematically and identify ALL visible issues:\n"
-                    "- Cracks (hairline, vertical, horizontal, diagonal)\n"
-                    "- Mortar erosion or gaps in joints\n"
-                    "- Spalled or damaged bricks\n"
-                    "- Color variations indicating water damage\n"
-                    "- Any irregularities in the brickwork\n\n"
-                    
-                    "CRITICAL INSTRUCTIONS:\n"
-                    "1. Each defect needs its OWN SMALL bounding box - draw tight boxes around individual cracks, not large areas\n"
-                    "2. If you see 5 different cracks, create 5 separate bounding boxes\n"
-                    "3. Small cracks should have small boxes (width/height around 0.02-0.10)\n"
-                    "4. DO NOT create one large box covering multiple defects\n\n"
-                    
-                    "COORDINATE SYSTEM - MEASURE VERY CAREFULLY:\n"
-                    "CRITICAL: The origin (0,0) is at the TOP-LEFT corner. Y coordinates start at 0 at the TOP.\n"
-                    "- To find y_center: Count pixels from the TOP of the image, not the bottom\n"
-                    "- x_center: 0.0 = left edge, 0.5 = horizontal center, 1.0 = right edge\n"
-                    "- y_center: 0.0 = very TOP of image, 0.5 = vertical middle, 1.0 = very BOTTOM\n\n"
-                    
-                    "POSITION GUIDE - measure distance from TOP edge:\n"
-                    "- If defect is near the TOP of image: y_center = 0.05-0.25 (small numbers!)\n"
-                    "- If defect is in upper-middle area: y_center = 0.25-0.45\n"
-                    "- If defect is in center area: y_center = 0.45-0.55\n"
-                    "- If defect is in lower-middle area: y_center = 0.55-0.75\n"
-                    "- If defect is near the BOTTOM: y_center = 0.75-0.95\n\n"
-                    
-                    "⚠️ COMMON MISTAKE TO AVOID:\n"
-                    "Do NOT use large y values (like 0.6-0.9) for defects that are in the UPPER part of the image.\n"
-                    "Carefully measure from the TOP edge downwards.\n\n"
-                    
-                    "OUTPUT FORMAT - You MUST return EXACTLY 5 values in bbox_2d array:\n"
-                    "\"bbox_2d\": [class_id, x_center, y_center, width, height]\n\n"
-                    
-                    "Where:\n"
-                    "- class_id: Always 0 for cracks\n"
-                    "- x_center: horizontal center (0.0=left, 1.0=right)\n"
-                    "- y_center: vertical center measured FROM TOP (0.0=top, 1.0=bottom)\n"
-                    "- width: box width as fraction (typically 0.02-0.10)\n"
-                    "- height: box height as fraction (typically 0.02-0.10)\n\n"
-                    
-                    "EXAMPLE - for defects in UPPER third of image:\n"
-                    "{\n"
-                    "  \"cracks\": [\n"
-                    "    {\"bbox_2d\": [0, 0.35, 0.20, 0.08, 0.03], \"description\": \"crack near top - y=0.20 means 20% down from top\"},\n"
-                    "    {\"bbox_2d\": [0, 0.50, 0.15, 0.05, 0.02], \"description\": \"crack at upper area - y=0.15 means 15% from top\"},\n"
-                    "    {\"bbox_2d\": [0, 0.70, 0.30, 0.04, 0.02], \"description\": \"crack in upper-middle - y=0.30 means 30% from top\"}\n"
-                    "  ]\n"
-                    "}\n\n"
-                    
-                    "Return ONLY valid JSON - no extra text. If you find nothing, return {\"cracks\": []}.\n"
-                    "⚠️ Be thorough and ACCURATE with coordinates - typical drone images have 5-15 detectable defects."
-                ),
+                "content": user_prompt,
                 "images": [image_base64]
             }
         ],
@@ -205,9 +306,9 @@ def analyze_drone_image(image_url: str, model_name: str = "llava:13b"):
                 if cracks:
                     print(f"\n✓ Found {len(cracks)} crack(s)")
                     
-                    # Save in YOLO format to results folder
+                    # Save in YOLO format to results folder (auto-convert if needed)
                     output_file = os.path.join(results_folder, f"{base_filename}.txt")
-                    save_yolo_labels(cracks, output_file)
+                    save_yolo_labels_auto(cracks, output_file, format_type)
                     
                     # Save YOLO classes file
                     classes_file = os.path.join(results_folder, "classes.txt")
