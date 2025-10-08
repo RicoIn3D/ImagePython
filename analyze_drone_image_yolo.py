@@ -11,9 +11,69 @@ import requests
 import base64
 import json
 import os
+import io
 import argparse
 from pathlib import Path
 from urllib.parse import urlparse
+from PIL import Image, ImageOps, ImageDraw, ImageFont
+from hashlib import md5
+
+def exif_safe_open_bytes(image_bytes):
+    img = Image.open(io.BytesIO(image_bytes))
+    img = ImageOps.exif_transpose(img).convert("RGB")
+    return img
+
+def compute_md5_bytes(image_bytes) -> str:
+    return md5(image_bytes).hexdigest()
+
+def yolo_to_px(xc, yc, w, h, W, H):
+    Xc, Yc = xc*W, yc*H
+    Bw, Bh = w*W, h*H
+    x1 = int(round(max(0, Xc - Bw/2)))
+    y1 = int(round(max(0, Yc - Bh/2)))
+    x2 = int(round(min(W-1, Xc + Bw/2)))
+    y2 = int(round(min(H-1, Yc + Bh/2)))
+    return x1, y1, x2, y2
+
+def save_debug_grid_overlay(img: Image.Image, cracks: list, out_path: str):
+    """Draw a 0..1 grid, mark YOLO centers & boxes from cracks, save to out_path."""
+    W, H = img.size
+    im = img.copy()
+    draw = ImageDraw.Draw(im)
+    try:
+        font = ImageFont.truetype("DejaVuSans.ttf", 16)
+    except Exception:
+        font = ImageFont.load_default()
+
+    # grid every 0.1
+    for t in [i/10 for i in range(1,10)]:
+        x = int(round(t*W)); y = int(round(t*H))
+        draw.line([(x,0),(x,H-1)], width=1, fill=(255,255,255))
+        draw.line([(0,y),(W-1,y)], width=1, fill=(255,255,255))
+        if t in (0.1,0.3,0.5,0.7,0.9):
+            draw.text((x+4, 4), f"x={t:.1f}", fill=(0,0,0), font=font)
+            draw.text((4, y+4), f"y={t:.1f}", fill=(0,0,0), font=font)
+
+    # boxes from cracks (YOLO [cls,xc,yc,w,h])
+    for i,c in enumerate(cracks, start=1):
+        bbox = c.get("bbox_2d", [])
+        if len(bbox) >= 5:
+            _, xc, yc, w, h = map(float, bbox[:5])
+            x1,y1,x2,y2 = yolo_to_px(xc,yc,w,h,W,H)
+            # rect
+            for o in range(3):
+                draw.rectangle([x1-o,y1-o,x2+o,y2+o], outline=(255,0,0))
+            # center crosshair
+            Xc,Yc = int(round(xc*W)), int(round(yc*H))
+            draw.line([(Xc-10,Yc),(Xc+10,Yc)], fill=(0,255,0), width=2)
+            draw.line([(Xc,Yc-10),(Xc,Yc+10)], fill=(0,255,0), width=2)
+            # label
+            label = c.get("description","bbox")
+            tw = draw.textlength(label, font=font)
+            draw.rectangle([x1, max(0,y1-22), x1+int(tw)+8, max(22,y1)], fill=(255,255,255))
+            draw.text((x1+4, max(0,y1-20)), label, fill=(0,0,0), font=font)
+
+    im.save(out_path, quality=95)
 
 def get_filename_from_url(url: str) -> str:
     """Extract filename from URL without extension."""
@@ -248,6 +308,10 @@ def analyze_drone_image(image_url: str, model_name: str = "llava:13b"):
         response = requests.get(image_url, timeout=30)
         response.raise_for_status()
         image_data = response.content
+        img = exif_safe_open_bytes(image_data)
+        W, H = img.size
+        digest = compute_md5_bytes(image_data)
+
         image_base64 = base64.b64encode(image_data).decode('utf-8')
         print(f"✓ Image downloaded successfully ({len(image_base64)} bytes)")
         
@@ -359,7 +423,12 @@ def analyze_drone_image(image_url: str, model_name: str = "llava:13b"):
                 cracks = findings.get("cracks", []) or findings.get("boxes", [])
                 if cracks:
                     print(f"\n✓ Found {len(cracks)} crack(s)")
-                    
+                    findings["_meta"] = {
+                        "source_image": os.path.basename(image_path),
+                        "image_size": [W, H],
+                        "md5": digest,
+                        "exif_transposed": True
+                    }
                     # Save in YOLO format (simple version)
                     output_file = os.path.join(results_folder, f"{base_filename}.txt")
                     save_yolo_labels_simple(cracks, output_file)
@@ -372,6 +441,14 @@ def analyze_drone_image(image_url: str, model_name: str = "llava:13b"):
                     json_output_file = os.path.join(results_folder, f"{base_filename}_analysis.json")
                     with open(json_output_file, "w", encoding="utf-8") as f:
                         json.dump(findings, f, indent=2)
+                    # Save a debug grid overlay next to the JSON and record its path
+                    dbg_path = os.path.join(results_folder, f"{base_filename}_debug_grid.jpg")
+                    save_debug_grid_overlay(img, cracks, dbg_path)
+                    findings["_meta"]["debug_grid"] = os.path.basename(dbg_path)
+                    with open(json_output_file, "w", encoding="utf-8") as f:
+                        json.dump(findings, f, indent=2)
+
+                    print(f"✓ Saved debug overlay to: {dbg_path}")
                     print(f"✓ Saved detailed analysis to: {json_output_file}")
                     
                     print(f"\n📁 All files saved to: {results_folder}/")

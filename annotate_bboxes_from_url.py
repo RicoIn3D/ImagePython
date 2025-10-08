@@ -34,7 +34,8 @@ import os
 from typing import List, Dict, Any, Tuple
 
 import requests
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont,ImageOps
+from hashlib import md5
 
 # --- Defaults ---
 DEFAULT_IMAGE_URL = (
@@ -56,7 +57,12 @@ DEFAULT_DATA = {
 }
 
 # ---------------- Image Loading ----------------
+def exif_safe_open_file(path: str) -> Image.Image:
+    return ImageOps.exif_transpose(Image.open(path)).convert("RGB")
 
+def compute_md5_file(path: str) -> str:
+    with open(path, "rb") as f:
+        return md5(f.read()).hexdigest()
 def load_image_from_url(url: str) -> Image.Image:
     resp = requests.get(url, timeout=30)
     resp.raise_for_status()
@@ -355,7 +361,6 @@ def main():
     group = p.add_mutually_exclusive_group()
     group.add_argument("--url", help="Image URL to download")
     group.add_argument("--file", help="Local image file path")
-    
     # Label source (mutually exclusive)
     label_group = p.add_mutually_exclusive_group()
     label_group.add_argument("--labels-qwen", help="Qwen-1000 label file (cls x1 y1 x2 y2; coords in 0..1000)")
@@ -368,6 +373,7 @@ def main():
     p.add_argument("--export-qwen", help="Save Qwen-1000 labels to this file")
     p.add_argument("--out", default="annotated_output.jpg", help="Output annotated image filename")
     p.add_argument("--results-folder", default="results", help="Output folder for all results (default: results)")
+    p.add_argument("--debug-grid", action="store_true", help="Also save a debug grid overlay.")
     
     args = p.parse_args()
 
@@ -378,7 +384,8 @@ def main():
                 sys.stderr.write(f"File does not exist: {args.file}\n")
                 sys.exit(4)
             print(f"Loading local file: {args.file}")
-            img = load_image_from_file(args.file)
+            #rs removed img = load_image_from_file(args.file)
+            img = exif_safe_open_file(args.file)
         elif args.url:
             print(f"Downloading image from URL: {args.url}")
             img = load_image_from_url(args.url)
@@ -411,6 +418,27 @@ def main():
         try:
             with open(args.json_file, "r", encoding="utf-8") as f:
                 data = json.load(f)
+                meta = data.get("_meta", {})
+                if meta:
+                    # 1) filename check (warn if mismatch but continue)
+                    src_in_json = meta.get("source_image")
+                    if src_in_json and args.file and os.path.basename(args.file) != src_in_json:
+                        print(f"⚠ WARNING: Annotating '{os.path.basename(args.file)}' but JSON was created for '{src_in_json}'")
+
+                    # 2) size check (error out if mismatched)
+                    sz = meta.get("image_size")
+                    if isinstance(sz, list) and len(sz) == 2:
+                        if tuple(sz) != img.size:
+                            sys.stderr.write(f"✗ Image size mismatch: json={tuple(sz)} vs opened={img.size}\n")
+                            sys.exit(6)
+
+                    # 3) md5 check (best when annotating the exact same bytes)
+                    digest = meta.get("md5")
+                    if digest and args.file:
+                        file_md5 = compute_md5_file(args.file)
+                        if file_md5 != digest:
+                            sys.stderr.write("✗ Image content mismatch (md5). Aborting to prevent misaligned boxes.\n")
+                            sys.exit(7)
         except json.JSONDecodeError as e:
             sys.stderr.write(f"Failed to parse JSON file: {e}\n")
             sys.exit(2)
@@ -435,6 +463,10 @@ def main():
     results_folder = args.results_folder
     os.makedirs(results_folder, exist_ok=True)
     
+    if args.debug_grid:
+        dbg_out = os.path.join(results_folder, os.path.splitext(os.path.basename(args.out))[0] + "_debug_grid.jpg")
+ 
+
     # Prepare output paths in results folder
     output_image = os.path.join(results_folder, os.path.basename(args.out))
 
