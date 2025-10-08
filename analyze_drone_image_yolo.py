@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-Quick script to analyze your drone image and save cracks in YOLO format
+Analyze drone images for structural defects using Ollama vision models.
 
 Usage:
-  python analyze_drone_image_yolo.py
   python analyze_drone_image_yolo.py --url "https://example.com/image.jpg"
+  python analyze_drone_image_yolo.py --url "https://example.com/image.jpg" --model "qwen2.5vl:latest"
 """
 
 import requests
@@ -67,7 +67,7 @@ def create_results_folder() -> str:
     os.makedirs(results_folder, exist_ok=True)
     return results_folder
 
-def analyze_drone_image(image_url: str):
+def analyze_drone_image(image_url: str, model_name: str = "llava:13b"):
     """Analyze a drone image from the given URL."""
     # Create results folder
     results_folder = create_results_folder()
@@ -96,14 +96,17 @@ def analyze_drone_image(image_url: str):
     ollama_url = "http://localhost:11434/api/chat"
     
     payload = {
-        "model": "llava:13b",
+        "model": model_name,
         "messages": [
             {
                 "role": "system",
                 "content": (
-                    "You are an experienced architect inspecting structures from drone imagery. "
-                    "Analyze images for structural issues, cracks, mortar problems, water damage, "
-                    "and any defects. Be specific about locations and severity."                  
+                    "You are an expert structural engineer specializing in drone-based building inspections. "
+                    "Your task is to analyze images for structural defects with high precision. "
+                    "You must identify cracks, mortar erosion, spalling, water damage, and other defects. "
+                    "CRITICAL: You must provide accurate bounding box coordinates in YOLO format where the origin (0,0) is at the TOP-LEFT corner. "
+                    "Always measure y-coordinates from the TOP of the image downwards. "
+                    "Be thorough, systematic, and precise with spatial measurements."
                 )
             },
             {
@@ -122,27 +125,44 @@ def analyze_drone_image(image_url: str):
                     "3. Small cracks should have small boxes (width/height around 0.02-0.10)\n"
                     "4. DO NOT create one large box covering multiple defects\n\n"
                     
+                    "COORDINATE SYSTEM - MEASURE VERY CAREFULLY:\n"
+                    "CRITICAL: The origin (0,0) is at the TOP-LEFT corner. Y coordinates start at 0 at the TOP.\n"
+                    "- To find y_center: Count pixels from the TOP of the image, not the bottom\n"
+                    "- x_center: 0.0 = left edge, 0.5 = horizontal center, 1.0 = right edge\n"
+                    "- y_center: 0.0 = very TOP of image, 0.5 = vertical middle, 1.0 = very BOTTOM\n\n"
+                    
+                    "POSITION GUIDE - measure distance from TOP edge:\n"
+                    "- If defect is near the TOP of image: y_center = 0.05-0.25 (small numbers!)\n"
+                    "- If defect is in upper-middle area: y_center = 0.25-0.45\n"
+                    "- If defect is in center area: y_center = 0.45-0.55\n"
+                    "- If defect is in lower-middle area: y_center = 0.55-0.75\n"
+                    "- If defect is near the BOTTOM: y_center = 0.75-0.95\n\n"
+                    
+                    "⚠️ COMMON MISTAKE TO AVOID:\n"
+                    "Do NOT use large y values (like 0.6-0.9) for defects that are in the UPPER part of the image.\n"
+                    "Carefully measure from the TOP edge downwards.\n\n"
+                    
                     "OUTPUT FORMAT - You MUST return EXACTLY 5 values in bbox_2d array:\n"
-                    "\"bbox_2d\": [0, x_center, y_center, width, height]\n\n"
+                    "\"bbox_2d\": [class_id, x_center, y_center, width, height]\n\n"
                     
                     "Where:\n"
-                    "- First value is ALWAYS 0 (class_id for crack)\n"
-                    "- x_center: horizontal center of the crack (0.0=left edge, 1.0=right edge)\n"
-                    "- y_center: vertical center of the crack (0.0=top, 1.0=bottom)\n"
-                    "- width: crack width as fraction of image (typically 0.02-0.10 for thin cracks)\n"
-                    "- height: crack height as fraction of image (typically 0.02-0.10 for small cracks)\n\n"
+                    "- class_id: Always 0 for cracks\n"
+                    "- x_center: horizontal center (0.0=left, 1.0=right)\n"
+                    "- y_center: vertical center measured FROM TOP (0.0=top, 1.0=bottom)\n"
+                    "- width: box width as fraction (typically 0.02-0.10)\n"
+                    "- height: box height as fraction (typically 0.02-0.10)\n\n"
                     
-                    "EXAMPLE of correct format:\n"
+                    "EXAMPLE - for defects in UPPER third of image:\n"
                     "{\n"
                     "  \"cracks\": [\n"
-                    "    {\"bbox_2d\": [0, 0.356, 0.568, 0.076, 0.026], \"description\": \"horizontal hairline crack in mortar joint\"},\n"
-                    "    {\"bbox_2d\": [0, 0.291, 0.473, 0.033, 0.014], \"description\": \"faint horizontal mortar erosion\"},\n"
-                    "    {\"bbox_2d\": [0, 0.371, 0.457, 0.035, 0.018], \"description\": \"slight vertical mortar separation\"}\n"
+                    "    {\"bbox_2d\": [0, 0.35, 0.20, 0.08, 0.03], \"description\": \"crack near top - y=0.20 means 20% down from top\"},\n"
+                    "    {\"bbox_2d\": [0, 0.50, 0.15, 0.05, 0.02], \"description\": \"crack at upper area - y=0.15 means 15% from top\"},\n"
+                    "    {\"bbox_2d\": [0, 0.70, 0.30, 0.04, 0.02], \"description\": \"crack in upper-middle - y=0.30 means 30% from top\"}\n"
                     "  ]\n"
                     "}\n\n"
                     
                     "Return ONLY valid JSON - no extra text. If you find nothing, return {\"cracks\": []}.\n"
-                    "⚠️ Be thorough - typical drone images have 5-15 detectable defects."
+                    "⚠️ Be thorough and ACCURATE with coordinates - typical drone images have 5-15 detectable defects."
                 ),
                 "images": [image_base64]
             }
@@ -155,7 +175,7 @@ def analyze_drone_image(image_url: str):
         }
     }
     
-    print("\nSending request to Ollama (llava model)...")
+    print(f"\nSending request to Ollama ({model_name})...")
     print("This may take 30-60 seconds depending on your hardware...\n")
     
     try:
@@ -184,9 +204,6 @@ def analyze_drone_image(image_url: str):
                 cracks = findings.get("cracks", []) or findings.get("boxes", [])
                 if cracks:
                     print(f"\n✓ Found {len(cracks)} crack(s)")
-                    
-                    # Generate output filename based on image URL
-                    base_filename = get_filename_from_url(image_url)
                     
                     # Save in YOLO format to results folder
                     output_file = os.path.join(results_folder, f"{base_filename}.txt")
@@ -239,6 +256,11 @@ if __name__ == "__main__":
         required=True,
         help="Image URL to analyze"
     )
+    parser.add_argument(
+        "--model",
+        default="llava:13b",
+        help="Ollama model to use (default: llava:13b, try: qwen2.5vl:latest)"
+    )
     args = parser.parse_args()
     
     print("=" * 70)
@@ -255,9 +277,10 @@ if __name__ == "__main__":
             print(f"✓ Ollama is running")
             print(f"✓ Available models: {', '.join(model_names)}")
             
-            if not any("llava" in name for name in model_names):
-                print("\n⚠ WARNING: llava model not found!")
-                print("  Install it with: ollama pull llava")
+            # Check if requested model is available
+            if not any(args.model in name for name in model_names):
+                print(f"\n⚠ WARNING: {args.model} not found!")
+                print(f"  Install it with: ollama pull {args.model}")
                 response = input("\nContinue anyway? (y/n): ")
                 if response.lower() != 'y':
                     exit(0)
@@ -265,7 +288,7 @@ if __name__ == "__main__":
     except:
         print("✗ Cannot connect to Ollama")
         print("  Make sure Ollama is running: ollama serve")
-        print("  And llava model is installed: ollama pull llava")
+        print("  And the model is installed")
         exit(1)
     
-    analyze_drone_image(args.url)
+    analyze_drone_image(args.url, args.model)
