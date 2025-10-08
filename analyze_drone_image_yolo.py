@@ -181,120 +181,6 @@ def save_yolo_labels_auto(cracks: list, output_path: str, format_type: str) -> N
     
     print(f"✓ Saved {len(lines)} crack(s) to: {output_path} (YOLO format)")
 
-def get_prompt_for_model(model_name: str) -> tuple[str, str]:
-    """Get appropriate prompt based on model type. Returns (user_prompt, format_type)."""
-    
-    is_qwen = "qwen" in model_name.lower()
-    
-    if is_qwen:
-        # Qwen-1000 format: [x1, y1, x2, y2] in 0..1000 range
-        format_description = (
-            "OUTPUT FORMAT - Qwen-1000 corners format:\n"
-            "\"bbox_2d\": [x1, y1, x2, y2]\n\n"
-            
-            "Where ALL values are in the range 0-1000 (NOT 0-1):\n"
-            "- x1: left edge X coordinate (0 = left edge, 1000 = right edge)\n"
-            "- y1: top edge Y coordinate (0 = TOP edge, 1000 = BOTTOM edge)\n"
-            "- x2: right edge X coordinate (0 = left edge, 1000 = right edge)\n"
-            "- y2: bottom edge Y coordinate (0 = TOP edge, 1000 = BOTTOM edge)\n\n"
-            
-            "CRITICAL: Values are 0-1000, independent of actual image size.\n"
-            "A box from 20% to 30% horizontally and 35% to 40% vertically would be:\n"
-            "[200, 350, 300, 400]\n\n"
-        )
-        
-        example = (
-            "REALISTIC EXAMPLE - defects on brick wall in middle of image (Qwen-1000 format):\n"
-            "{\n"
-            "  \"cracks\": [\n"
-            "    {\"bbox_2d\": [320, 350, 400, 380], \"description\": \"horizontal crack in mortar - values are 0-1000\"},\n"
-            "    {\"bbox_2d\": [450, 380, 500, 400], \"description\": \"vertical crack in brick - x1,y1 is top-left, x2,y2 is bottom-right\"},\n"
-            "    {\"bbox_2d\": [250, 320, 290, 340], \"description\": \"mortar erosion - all coordinates in 0-1000 range\"}\n"
-            "  ]\n"
-            "}\n\n"
-        )
-    else:
-        # YOLO format: [class_id, x_center, y_center, width, height] in 0..1 range
-        format_description = (
-            "OUTPUT FORMAT - YOLO normalized format:\n"
-            "\"bbox_2d\": [class_id, x_center, y_center, width, height]\n\n"
-            
-            "Where ALL values are normalized to 0.0-1.0 range:\n"
-            "- class_id: Always 0 for cracks\n"
-            "- x_center: horizontal center (0.0=left, 1.0=right)\n"
-            "- y_center: vertical center measured FROM TOP (0.0=top, 1.0=bottom)\n"
-            "- width: box width as fraction (typically 0.02-0.10)\n"
-            "- height: box height as fraction (typically 0.02-0.10)\n\n"
-            
-            "CRITICAL: All coordinates are 0.0-1.0, representing fractions of image dimensions.\n\n"
-        )
-        
-        example = (
-            "REALISTIC EXAMPLE - defects on brick wall in middle of image (YOLO format):\n"
-            "{\n"
-            "  \"cracks\": [\n"
-            "    {\"bbox_2d\": [0, 0.35, 0.38, 0.08, 0.03], \"description\": \"horizontal crack - center at 35%,38% with 8%x3% size\"},\n"
-            "    {\"bbox_2d\": [0, 0.50, 0.42, 0.05, 0.02], \"description\": \"vertical crack - all values are 0-1 fractions\"},\n"
-            "    {\"bbox_2d\": [0, 0.28, 0.35, 0.04, 0.02], \"description\": \"mortar erosion - class_id=0, then center_x, center_y, width, height\"}\n"
-            "  ]\n"
-            "}\n\n"
-        )
-    
-    common_instructions = (
-        "You are inspecting a BRICK WALL for structural defects. Focus ONLY on the brick/masonry surfaces.\n\n"
-        
-        "IGNORE these areas:\n"
-        "- Sky and clouds (usually in upper portion)\n"
-        "- Trees, vehicles, ground\n"
-        "- Any non-brick surfaces\n\n"
-        
-        "FOCUS ONLY on the brick wall and scan it systematically for:\n"
-        "- Cracks (hairline, vertical, horizontal, diagonal)\n"
-        "- Mortar erosion or gaps in joints\n"
-        "- Spalled or damaged bricks\n"
-        "- Color variations indicating water damage\n"
-        "- Any irregularities in the brickwork\n\n"
-        
-        "CRITICAL INSTRUCTIONS:\n"
-        "1. Each defect needs its OWN SMALL bounding box - draw tight boxes around individual cracks\n"
-        "2. If you see 5 different cracks, create 5 separate bounding boxes\n"
-        "3. Small cracks should have small boxes\n"
-        "4. DO NOT create one large box covering multiple defects\n"
-        "5. ONLY place boxes on the BRICK SURFACE, never on sky/clouds\n\n"
-        
-        "VISUAL GUIDANCE:\n"
-        "The brick gable/wall is typically reddish-brown colored masonry.\n"
-        "Place bounding boxes ONLY on visible defects in this brick surface.\n"
-        "If you see white mortar lines between bricks, defects are usually along these lines.\n\n"
-        
-        "COORDINATE SYSTEM:\n"
-        "Origin (0,0) is at TOP-LEFT corner. Y increases downwards.\n"
-        "- Y near 0 = top of image (often sky)\n"
-        "- Y near middle = center of image (often brick wall)\n"
-        "- Y near max = bottom of image (often ground/roof)\n\n"
-        
-        "⚠️ CRITICAL MISTAKES TO AVOID:\n"
-        "1. Do NOT place bounding boxes in the sky/clouds\n"
-        "2. Do NOT place boxes on background buildings, trees, or ground\n"
-        "3. ONLY place boxes directly on the brick wall surface where you see actual defects\n"
-        "4. Measure carefully relative to the ENTIRE image\n\n"
-    )
-    
-    closing = (
-        "BEFORE YOU RESPOND:\n"
-        "1. Identify where the brick wall is located in the image\n"
-        "2. Ignore sky, clouds, and background\n"
-        "3. Look for actual defects ONLY on the brick surface\n"
-        "4. Measure coordinates carefully\n\n"
-        
-        "Return ONLY valid JSON - no extra text. If no defects found, return {\"cracks\": []}.\n"
-        "⚠️ Be thorough and ACCURATE - focus on BRICK WALL only, typical images have 5-15 defects."
-    )
-    
-    full_prompt = common_instructions + format_description + example + closing
-    format_type = "Qwen-1000" if is_qwen else "YOLO"
-    
-    return full_prompt, format_type
 
 def analyze_drone_image(image_url: str, model_name: str = "llava:13b"):
     """Analyze a drone image from the given URL."""
@@ -361,14 +247,7 @@ def analyze_drone_image(image_url: str, model_name: str = "llava:13b"):
         "1. Is this box ON the brick wall surface? (not on sky/background)\n"
         "2. Is there a visible defect at this location?\n"
         "3. Is the box small and tight around the defect?\n\n"
-        
-        "OUTPUT FORMAT:\n"
-        "{\n"
-        "  \"cracks\": [\n"
-        "    {\"bbox_2d\": [0, 0.45, 0.50, 0.06, 0.03], \"description\": \"horizontal crack in mortar joint\"},\n"
-        "    {\"bbox_2d\": [0, 0.52, 0.48, 0.04, 0.02], \"description\": \"vertical crack in brick\"}\n"
-        "  ]\n"
-        "}\n\n"
+      
         
         "Find 3-12 defects if visible. Return ONLY valid JSON. No extra text."
     )
